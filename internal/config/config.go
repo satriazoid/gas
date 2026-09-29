@@ -179,17 +179,17 @@ func Default() *Config {
 			"**/vendor/**",
 		},
 		WritablePaths: []string{
-			"**/output/**",
-			"**/temp/**",
-			"**/tmp/**",
-			"**/src/**/*.go",
-			"**/src/**/*.ts",
-			"**/src/**/*.tsx",
-			"**/src/**/*.js",
-			"**/src/**/*.py",
-			"**/src/**/*.rs",
-			"**/README.md",
-			"**/CHANGELOG.md",
+			"output/**",
+			"temp/**",
+			"tmp/**",
+			"src/**/*.go",
+			"src/**/*.ts",
+			"src/**/*.tsx",
+			"src/**/*.js",
+			"src/**/*.py",
+			"src/**/*.rs",
+			"README.md",
+			"CHANGELOG.md",
 		},
 		AllowExec: []string{
 			// System toolchains: allowed outside the white box so builds work.
@@ -368,8 +368,8 @@ project_internal_deny:
   - "**/vendor/**"
 
 writable_paths:
-  - "**/output/**"
-  - "**/temp/**"
+  - "output/**"
+  - "temp/**"
 
 read_only: false
 `

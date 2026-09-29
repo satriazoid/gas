@@ -329,6 +329,15 @@ func (e *Engine) Decide(input string, op Op) Decision {
 				d.Allowed, d.Reason, d.Rule, d.Scope = true, ReasonAllowed, p, "write"
 				return d
 			}
+			// Writable globs are written project-relative ("src/**/*.go"), so a
+			// project shipping "temp/**" cannot accidentally whitelist the
+			// system temp directory.
+			if rel := e.relative(cand); rel != "" {
+				if p, ok := match(e.writable, rel); ok {
+					d.Allowed, d.Reason, d.Rule, d.Scope = true, ReasonAllowed, p, "write"
+					return d
+				}
+			}
 		}
 		d.Reason, d.Scope = ReasonWriteDenied, "write"
 		return d
@@ -350,6 +359,23 @@ func (e *Engine) insideAny(p string) bool {
 		}
 	}
 	return false
+}
+
+// relative returns p expressed relative to the project root (slash separated),
+// or "" when p lies outside the project.
+func (e *Engine) relative(p string) string {
+	if e.project == "" || p == "" {
+		return ""
+	}
+	if !within(e.project, p) {
+		return ""
+	}
+	rel := strings.TrimPrefix(p, e.project)
+	rel = strings.TrimPrefix(rel, "/")
+	if rel == "" {
+		return "."
+	}
+	return rel
 }
 
 func dedup(vals ...string) []string {

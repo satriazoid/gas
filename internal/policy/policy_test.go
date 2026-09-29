@@ -24,8 +24,8 @@ func newTestEngine(t *testing.T) (*Engine, string) {
 	cfg.ProjectDir = project
 	cfg.AllowRoots = []string{project}
 	// Pin the write globs: the test project lives inside a system temp dir, so
-	// the shipped "**/temp/**" glob would allow every write here.
-	cfg.WritablePaths = []string{"**/src/**/*.go", "**/output/**"}
+	// the shipped "temp/**" glob would allow every write here.
+	cfg.WritablePaths = []string{"src/**/*.go", "output/**"}
 	return New(cfg), home
 }
 
