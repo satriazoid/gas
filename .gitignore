@@ -1,0 +1,8 @@
+/bin/
+/bin-*/
+/dist/
+*.exe
+*.test
+*.out
+.gasignore
+gas

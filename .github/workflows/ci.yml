@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test ./...
+      - name: build
+        run: go build -trimpath -ldflags "-s -w -X main.version=1.0.0" -o bin/gas ./cmd/gas
+      - name: policy self-test
+        shell: bash
+        run: ./bin/gas doctor
+
+  linux-namespace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: vet for linux
+        run: GOOS=linux go vet ./...
+      - name: kernel-level block must work under unshare
+        run: |
+          go build -trimpath -o bin/gas ./cmd/gas
+          mkdir -p /tmp/proj/src
+          echo secret > /tmp/proj/.env
+          echo ok > /tmp/proj/src/main.go
+          ./bin/gas status --project /tmp/proj
+          if ./bin/gas check --project /tmp/proj /tmp/proj/.env; then
+            echo "::error::expected .env to be denied"; exit 1
+          fi
+          ./bin/gas check --project /tmp/proj /tmp/proj/src/main.go
