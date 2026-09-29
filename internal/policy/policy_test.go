@@ -29,6 +29,41 @@ func newTestEngine(t *testing.T) (*Engine, string) {
 	return New(cfg), home
 }
 
+func TestEtcShadowBlockedOnPosix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("posix system path")
+	}
+	eng, _ := newTestEngine(t)
+	for _, p := range []string{"/etc/shadow", "/etc/passwd", "/etc/sudoers"} {
+		if d := eng.Check(p, OpRead); d.Allowed {
+			t.Errorf("%s must be denied on posix, got allow (reason=%s)", p, d.Reason)
+		}
+	}
+}
+
+func TestRelativeInputResolvesAgainstProject(t *testing.T) {
+	eng, _ := newTestEngine(t)
+	// Relative inputs must resolve to the project root, not to a doubled path.
+	if d := eng.Check("src/main.go", OpRead); !d.Allowed {
+		t.Fatalf("relative in-project path denied: reason=%s resolved=%s", d.Reason, d.Resolved)
+	}
+	if d := eng.Check("../../../etc/shadow", OpRead); d.Allowed {
+		t.Fatalf("relative traversal escaped: resolved=%s", d.Resolved)
+	}
+	if d := eng.Check("../../outside.txt", OpRead); d.Allowed {
+		t.Fatalf("relative path escaped the white box: resolved=%s", d.Resolved)
+	}
+}
+
+func TestProjectInsideSymlinkedTempDir(t *testing.T) {
+	eng, _ := newTestEngine(t)
+	// The temp dir may be a symlink (macOS /tmp -> /private/tmp); write globs
+	// must still match project-relative paths through the resolved root.
+	if d := eng.Check(filepath.Join(eng.project, "output", "report.txt"), OpWrite); !d.Allowed {
+		t.Fatalf("write into project output denied: reason=%s resolved=%s roots=%v", d.Reason, d.Resolved, eng.projectRoots())
+	}
+}
+
 func TestGlobalDenyWins(t *testing.T) {
 	eng, home := newTestEngine(t)
 	cases := []struct {
@@ -37,12 +72,12 @@ func TestGlobalDenyWins(t *testing.T) {
 		op   Op
 	}{
 		{"ssh key", filepath.Join(home, ".ssh", "id_rsa"), OpRead},
+		{"etc shadow", "/etc/shadow", OpRead},
 		{"ssh key inside project", filepath.Join(eng.project, ".ssh", "id_rsa"), OpRead},
 		{"aws credentials", filepath.Join(home, ".aws", "credentials"), OpRead},
 		{"env file", filepath.Join(eng.project, ".env"), OpRead},
 		{"pem", filepath.Join(eng.project, "certs", "x.pem"), OpRead},
 		{"bash history", filepath.Join(home, ".bash_history"), OpRead},
-		{"etc shadow", "/etc/shadow", OpRead},
 		{"windows system32", `C:\Windows\System32\config\SAM`, OpRead},
 		{"git hooks exec", filepath.Join(eng.project, ".git", "hooks", "pre-commit"), OpExec},
 		{"node_modules bin exec", filepath.Join(eng.project, "node_modules", ".bin", "evil"), OpExec},

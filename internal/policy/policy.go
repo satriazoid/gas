@@ -61,6 +61,12 @@ type Engine struct {
 	project string
 	lower   bool
 
+	// projectNative is the absolute native path used when joining relative
+	// inputs; project is the normalized (slash-stripped) form used for
+	// matching, and projectResolved is its symlink-resolved twin.
+	projectNative   string
+	projectResolved string
+
 	globalDeny  []string
 	projectDeny []string
 	allowRoots  []string
@@ -74,14 +80,20 @@ func New(cfg *config.Config) *Engine {
 		cfg = config.Default()
 	}
 	e := &Engine{
-		cfg:     cfg,
-		home:    cfg.HomeDir,
-		project: norm(cfg.ProjectDir),
-		lower:   runtime.GOOS == "windows",
+		cfg:           cfg,
+		home:          cfg.HomeDir,
+		project:       norm(cfg.ProjectDir),
+		projectNative: cfg.ProjectDir,
+		lower:         runtime.GOOS == "windows",
 	}
 	if e.home == "" {
 		e.home, _ = os.UserHomeDir()
 	}
+	if e.projectNative == "" {
+		e.projectNative, _ = os.Getwd()
+		e.project = norm(e.projectNative)
+	}
+	e.projectResolved = e.resolve(e.project)
 
 	e.globalDeny = compile(e, cfg.DenyPatterns)
 	e.projectDeny = compile(e, cfg.ProjectInternalDeny)
@@ -146,8 +158,10 @@ func (e *Engine) absolute(p string) string {
 	if filepath.IsAbs(p) {
 		return norm(p)
 	}
-	if e.project != "" {
-		return norm(filepath.Join(filepath.FromSlash(e.project), filepath.FromSlash(p)))
+	// Join with the native project path: a relative input must resolve against
+	// the real filesystem root, not against the slash-stripped match key.
+	if e.projectNative != "" {
+		return norm(filepath.Join(e.projectNative, filepath.FromSlash(p)))
 	}
 	abs, err := filepath.Abs(p)
 	if err != nil {
@@ -364,18 +378,34 @@ func (e *Engine) insideAny(p string) bool {
 // relative returns p expressed relative to the project root (slash separated),
 // or "" when p lies outside the project.
 func (e *Engine) relative(p string) string {
-	if e.project == "" || p == "" {
+	if p == "" {
 		return ""
 	}
-	if !within(e.project, p) {
-		return ""
+	for _, root := range e.projectRoots() {
+		if within(root, p) {
+			rel := strings.TrimPrefix(p, root)
+			rel = strings.TrimPrefix(rel, "/")
+			if rel == "" {
+				return "."
+			}
+			return rel
+		}
 	}
-	rel := strings.TrimPrefix(p, e.project)
-	rel = strings.TrimPrefix(rel, "/")
-	if rel == "" {
-		return "."
+	return ""
+}
+
+// projectRoots returns every matching form of the project root: the normalized
+// absolute path and its symlink-resolved twin (macOS /tmp is a symlink to
+// /private/tmp, so both forms must be recognised).
+func (e *Engine) projectRoots() []string {
+	out := []string{}
+	if e.project != "" {
+		out = append(out, e.project)
 	}
-	return rel
+	if e.projectResolved != "" && e.projectResolved != e.project {
+		out = append(out, e.projectResolved)
+	}
+	return out
 }
 
 func dedup(vals ...string) []string {
